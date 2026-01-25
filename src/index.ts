@@ -160,6 +160,16 @@ class FrontappMCPServer {
               cc: { type: 'array', items: { type: 'string' }, description: 'CC recipients' },
               bcc: { type: 'array', items: { type: 'string' }, description: 'BCC recipients' },
               tag_ids: { type: 'array', items: { type: 'string' }, description: 'Tags to apply' },
+              author_id: { type: 'string', description: 'Teammate ID to attribute the message to (required for Sent folder visibility)' },
+              sender_name: { type: 'string', description: 'Name to use for sender info' },
+              options: {
+                type: 'object',
+                description: 'Sending options',
+                properties: {
+                  archive: { type: 'boolean', description: 'Archive conversation after sending (default: true)' },
+                  tags: { type: 'array', items: { type: 'string' }, description: 'Tag names to add to conversation' }
+                }
+              },
             },
             required: ['channel_id', 'to', 'body'],
           },
@@ -1227,17 +1237,18 @@ class FrontappMCPServer {
         // Draft tools
         {
           name: 'create_draft',
-          description: 'Create a new draft message',
+          description: 'Create a new outbound draft message (starts a new conversation)',
           inputSchema: {
             type: 'object',
             properties: {
+              channel_id: { type: 'string', description: 'Channel ID to send from (required)' },
               author_id: { type: 'string', description: 'Teammate ID creating the draft' },
-              to: { type: 'array', items: { type: 'string' }, description: 'Recipients' },
+              to: { type: 'array', items: { type: 'string' }, description: 'Recipient email addresses' },
               subject: { type: 'string', description: 'Draft subject' },
-              body: { type: 'string', description: 'Draft body' },
-              channel_id: { type: 'string', description: 'Channel ID' },
+              body: { type: 'string', description: 'Draft body (HTML supported)' },
+              body_format: { type: 'string', enum: ['html', 'markdown'], description: 'Body format (default: html)' },
             },
-            required: ['author_id', 'body'],
+            required: ['channel_id', 'author_id', 'body'],
           },
         },
         {
@@ -1253,16 +1264,19 @@ class FrontappMCPServer {
         },
         {
           name: 'create_draft_reply',
-          description: 'Create a draft reply to a conversation',
+          description: 'Create a draft reply to an existing conversation (threads properly)',
           inputSchema: {
             type: 'object',
             properties: {
-              channel_id: { type: 'string', description: 'Channel ID' },
-              conversation_id: { type: 'string', description: 'Conversation ID' },
-              author_id: { type: 'string', description: 'Teammate ID' },
-              body: { type: 'string', description: 'Draft body' },
+              conversation_id: { type: 'string', description: 'Conversation ID to reply to' },
+              author_id: { type: 'string', description: 'Teammate ID creating the draft' },
+              body: { type: 'string', description: 'Draft body (HTML supported)' },
+              channel_id: { type: 'string', description: 'Channel ID to send from (optional - auto-detected from conversation inbox if not provided)' },
+              to: { type: 'array', items: { type: 'string' }, description: 'Array of recipient email addresses (optional - defaults to original recipients)' },
+              cc: { type: 'array', items: { type: 'string' }, description: 'Array of CC email addresses' },
+              bcc: { type: 'array', items: { type: 'string' }, description: 'Array of BCC email addresses' },
             },
-            required: ['channel_id', 'author_id', 'body'],
+            required: ['conversation_id', 'author_id', 'body'],
           },
         },
         {
@@ -1834,6 +1848,58 @@ class FrontappMCPServer {
             required: ['teammate_id'],
           },
         },
+
+        // === NEW OPTIMIZED TOOLS (Added to fix Front API filtering issues) ===
+        {
+          name: 'list_open_conversations',
+          description: 'List truly open conversations with server-side filtering by status_category. This tool properly filters conversations that are actually open, unlike the standard list_conversations which returns mixed statuses despite query filters. Use this for reliable inbox counts.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              assignee_id: { type: 'string', description: 'Filter to conversations assigned to this teammate ID (e.g., tea_w47c)' },
+              inbox_id: { type: 'string', description: 'Filter to conversations in this inbox ID' },
+              limit: { type: 'number', description: 'Maximum number of truly open conversations to return (default 50, max 200)' },
+              unassigned_only: { type: 'boolean', description: 'Only return unassigned conversations' },
+            },
+          },
+        },
+        {
+          name: 'batch_archive_conversations',
+          description: 'Archive multiple conversations in a single operation. Much more efficient than archiving one at a time.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              conversation_ids: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Array of conversation IDs to archive (e.g., ["cnv_abc123", "cnv_def456"])'
+              },
+            },
+            required: ['conversation_ids'],
+          },
+        },
+        {
+          name: 'get_contact_by_handle',
+          description: 'Find a contact by their email address or phone number. Useful for finding existing conversations before sending a new message.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              handle: { type: 'string', description: 'The email address or phone number to search for' },
+            },
+            required: ['handle'],
+          },
+        },
+        {
+          name: 'get_inbox_open_count',
+          description: 'Get the count of truly open conversations in an inbox or for a teammate. Uses server-side filtering for accuracy.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              assignee_id: { type: 'string', description: 'Count open conversations for this teammate' },
+              inbox_id: { type: 'string', description: 'Count open conversations in this inbox' },
+            },
+          },
+        },
       ],
     }));
 
@@ -2403,6 +2469,20 @@ class FrontappMCPServer {
             result = await this.listTeammateInboxes(typedArgs.teammate_id);
             break;
 
+          // === NEW OPTIMIZED TOOL HANDLERS ===
+          case 'list_open_conversations':
+            result = await this.listOpenConversations(typedArgs);
+            break;
+          case 'batch_archive_conversations':
+            result = await this.batchArchiveConversations(typedArgs.conversation_ids);
+            break;
+          case 'get_contact_by_handle':
+            result = await this.getContactByHandle(typedArgs.handle);
+            break;
+          case 'get_inbox_open_count':
+            result = await this.getInboxOpenCount(typedArgs);
+            break;
+
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -2432,8 +2512,10 @@ class FrontappMCPServer {
   }
 
   private async searchConversations(query: string, limit?: number) {
-    const response = await this.axiosInstance.get('/conversations/search', {
-      params: { q: query, limit },
+    // Front API search endpoint uses URL-encoded query in path
+    const encodedQuery = encodeURIComponent(query);
+    const response = await this.axiosInstance.get(`/conversations/search/${encodedQuery}`, {
+      params: { limit },
     });
     return response.data;
   }
@@ -2985,7 +3067,19 @@ class FrontappMCPServer {
 
   // Draft methods
   private async createDraft(params: any) {
-    const response = await this.axiosInstance.post('/drafts', params);
+    const { channel_id, body_format, ...data } = params;
+    if (!channel_id) {
+      throw new Error('channel_id is required to create a new draft');
+    }
+    // Add options.body_format for proper HTML rendering (default to html)
+    const requestData = {
+      ...data,
+      options: {
+        body_format: body_format || 'html'
+      }
+    };
+    // POST to /channels/{channel_id}/drafts for new outbound drafts
+    const response = await this.axiosInstance.post(`/channels/${channel_id}/drafts`, requestData);
     return response.data;
   }
 
@@ -2995,8 +3089,34 @@ class FrontappMCPServer {
   }
 
   private async createDraftReply(params: any) {
-    const { channel_id, ...data } = params;
-    const response = await this.axiosInstance.post(`/channels/${channel_id}/drafts`, data);
+    const { conversation_id, channel_id, ...data } = params;
+
+    // If channel_id not provided, fetch it from the conversation's inbox
+    let finalChannelId = channel_id;
+    if (!finalChannelId) {
+      // Get the conversation's inboxes
+      const inboxesResponse = await this.axiosInstance.get(`/conversations/${conversation_id}/inboxes`);
+      const inboxes = inboxesResponse.data._results;
+
+      if (inboxes && inboxes.length > 0) {
+        // Get the channels for the first inbox
+        const channelsResponse = await this.axiosInstance.get(`/inboxes/${inboxes[0].id}/channels`);
+        const channels = channelsResponse.data._results;
+
+        if (channels && channels.length > 0) {
+          finalChannelId = channels[0].id;
+        }
+      }
+    }
+
+    if (!finalChannelId) {
+      throw new Error('Could not determine channel_id for draft reply. Please provide channel_id explicitly.');
+    }
+
+    const response = await this.axiosInstance.post(`/conversations/${conversation_id}/drafts`, {
+      ...data,
+      channel_id: finalChannelId,
+    });
     return response.data;
   }
 
@@ -3267,6 +3387,174 @@ class FrontappMCPServer {
   private async listTeammateInboxes(teammateId: string) {
     const response = await this.axiosInstance.get(`/teammates/${teammateId}/inboxes`);
     return response.data;
+  }
+
+  // === NEW OPTIMIZED METHODS ===
+
+  /**
+   * List truly open conversations with server-side filtering.
+   * The Front API's query filters (is:open, status:open) don't reliably filter results.
+   * This method fetches conversations and filters by status_category on the server side.
+   */
+  private async listOpenConversations(params: {
+    assignee_id?: string;
+    inbox_id?: string;
+    limit?: number;
+    unassigned_only?: boolean;
+  }) {
+    const targetLimit = Math.min(params.limit || 50, 200);
+    const openConversations: any[] = [];
+    let pageToken: string | undefined;
+    let pagesChecked = 0;
+    const maxPages = 10; // Safety limit to prevent infinite loops
+
+    // Build base query
+    let query = 'is:open';
+    if (params.assignee_id) {
+      query = `assignee:${params.assignee_id}`;
+    }
+    if (params.inbox_id) {
+      query += ` inbox:${params.inbox_id}`;
+    }
+
+    while (openConversations.length < targetLimit && pagesChecked < maxPages) {
+      const response = await this.axiosInstance.get('/conversations', {
+        params: {
+          q: query,
+          limit: 100,
+          page_token: pageToken,
+        },
+      });
+
+      const data = response.data;
+
+      // Filter to only truly open conversations (status_category === 'open')
+      const filtered = data._results.filter((conv: any) => {
+        if (conv.status_category !== 'open') return false;
+        if (params.unassigned_only && conv.assignee) return false;
+        if (params.assignee_id && conv.assignee?.id !== params.assignee_id) return false;
+        return true;
+      });
+
+      openConversations.push(...filtered);
+
+      // Check for more pages
+      if (data._pagination?.next) {
+        const url = new URL(data._pagination.next);
+        pageToken = url.searchParams.get('page_token') || undefined;
+      } else {
+        break;
+      }
+
+      pagesChecked++;
+    }
+
+    // Return limited results with metadata
+    return {
+      _results: openConversations.slice(0, targetLimit),
+      _metadata: {
+        total_open_found: openConversations.length,
+        pages_checked: pagesChecked,
+        filter_applied: 'status_category === "open"',
+      },
+    };
+  }
+
+  /**
+   * Archive multiple conversations efficiently.
+   * Uses Promise.allSettled to handle partial failures gracefully.
+   */
+  private async batchArchiveConversations(conversationIds: string[]) {
+    const results = await Promise.allSettled(
+      conversationIds.map(async (id) => {
+        try {
+          await this.axiosInstance.patch(`/conversations/${id}`, { status: 'archived' });
+          return { id, success: true };
+        } catch (error: any) {
+          return {
+            id,
+            success: false,
+            error: error.response?.data?.message || error.message
+          };
+        }
+      })
+    );
+
+    const succeeded = results.filter(
+      (r) => r.status === 'fulfilled' && r.value.success
+    ).length;
+    const failed = results.filter(
+      (r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)
+    );
+
+    return {
+      total: conversationIds.length,
+      succeeded,
+      failed: failed.length,
+      failures: failed.map((r) => {
+        if (r.status === 'rejected') {
+          return { error: r.reason?.message || 'Unknown error' };
+        }
+        return r.value;
+      }),
+    };
+  }
+
+  /**
+   * Find a contact by email address or phone number.
+   * Searches the contacts API with the handle as a query.
+   */
+  private async getContactByHandle(handle: string) {
+    // Front API allows searching contacts by handle
+    const response = await this.axiosInstance.get('/contacts', {
+      params: {
+        q: handle,
+        limit: 10,
+      },
+    });
+
+    const contacts = response.data._results || [];
+
+    // Find exact match by handle
+    const exactMatch = contacts.find((contact: any) =>
+      contact.handles?.some((h: any) =>
+        h.handle.toLowerCase() === handle.toLowerCase()
+      )
+    );
+
+    if (exactMatch) {
+      return {
+        found: true,
+        contact: exactMatch,
+        conversations_url: `/contacts/${exactMatch.id}/conversations`,
+      };
+    }
+
+    return {
+      found: false,
+      partial_matches: contacts.slice(0, 5),
+      message: `No exact match for "${handle}". Showing partial matches if any.`,
+    };
+  }
+
+  /**
+   * Get count of truly open conversations for inbox/teammate.
+   * Useful for quick inbox status checks without fetching all data.
+   */
+  private async getInboxOpenCount(params: { assignee_id?: string; inbox_id?: string }) {
+    // Use listOpenConversations with a high limit to count
+    const result = await this.listOpenConversations({
+      ...params,
+      limit: 200,
+    });
+
+    return {
+      open_count: result._results.length,
+      is_approximate: result._metadata.pages_checked >= 10,
+      note: result._metadata.pages_checked >= 10
+        ? 'Count may be approximate due to pagination limits'
+        : 'Exact count',
+    };
   }
 
   async run(): Promise<void> {

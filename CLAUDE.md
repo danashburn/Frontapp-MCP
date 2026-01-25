@@ -231,6 +231,13 @@ Required:
 Optional (defaults shown):
 - `NODE_ENV=production` - Set by Docker
 
+## Writing Style Rules
+
+**Never use em dashes (—) in any written content.** Use regular hyphens (-), commas, or rewrite sentences to avoid the need for dashes. This applies to:
+- Email drafts and replies
+- Documentation
+- Any user-facing text
+
 ## Important Notes
 
 - The server uses **stdio transport** - all MCP communication happens via stdin/stdout
@@ -238,3 +245,26 @@ Optional (defaults shown):
 - The server expects to run continuously, listening for MCP requests
 - Docker health check simply verifies Node.js can execute (basic liveness check)
 - All API responses are returned as JSON strings in MCP tool responses
+
+## Available MCP Servers
+
+The following MCP servers are configured for use with Claude Code:
+
+### Perplexity MCP
+- **Scope:** User (global)
+- **Command:** `npx -y perplexity-mcp`
+- **Purpose:** Provides access to Perplexity AI for web search and research queries
+- **Use Cases:**
+  - Deep research on topics
+  - Real-time web search with AI synthesis
+  - Fact-checking and citation gathering
+- **Tools:** `perplexity_search` - Search the web using Perplexity AI
+
+### Frontapp MCP (this project)
+- **Scope:** Project
+- **Command:** Docker-based (see above)
+- **Purpose:** Access Frontapp inbox, conversations, contacts, and tags
+- **Use Cases:**
+  - Search and manage email conversations
+  - Find newsletters and contacts
+  - Tag and organize messages

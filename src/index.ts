@@ -152,10 +152,10 @@ class FrontappMCPServer {
           inputSchema: {
             type: 'object',
             properties: {
-              channel_id: { type: 'string', description: 'Channel ID to send from' },
+              channel_id: { type: 'string', description: 'Channel ID to send from. Dan channels: cha_17w5k (dan@danashburn.co.uk), cha_jc7dj (dan@aeoengine.ai)' },
               to: { type: 'array', items: { type: 'string' }, description: 'Recipient email addresses or handles' },
               subject: { type: 'string', description: 'Message subject' },
-              body: { type: 'string', description: 'Message body (text or HTML)' },
+              body: { type: 'string', description: 'Message body in HTML (use <br> for line breaks, <b> for bold. Do NOT use <p>, <ul>, <li> tags - they break formatting)' },
               text: { type: 'string', description: 'Plain text version of body' },
               cc: { type: 'array', items: { type: 'string' }, description: 'CC recipients' },
               bcc: { type: 'array', items: { type: 'string' }, description: 'BCC recipients' },
@@ -182,7 +182,7 @@ class FrontappMCPServer {
             properties: {
               conversation_id: { type: 'string', description: 'Conversation ID to reply to' },
               type: { type: 'string', enum: ['comment', 'reply'], description: 'Type of reply' },
-              body: { type: 'string', description: 'Reply body' },
+              body: { type: 'string', description: 'Reply body in HTML (use <br> for line breaks, <b> for bold. Do NOT use <p>, <ul>, <li> tags)' },
               text: { type: 'string', description: 'Plain text version' },
               author_id: { type: 'string', description: 'Teammate ID sending the reply' },
               channel_id: { type: 'string', description: 'Channel to send from (required for reply type)' },
@@ -1241,11 +1241,11 @@ class FrontappMCPServer {
           inputSchema: {
             type: 'object',
             properties: {
-              channel_id: { type: 'string', description: 'Channel ID to send from (required)' },
+              channel_id: { type: 'string', description: 'Channel ID to send from (required). Dan channels: cha_17w5k (dan@danashburn.co.uk), cha_jc7dj (dan@aeoengine.ai)' },
               author_id: { type: 'string', description: 'Teammate ID creating the draft' },
               to: { type: 'array', items: { type: 'string' }, description: 'Recipient email addresses' },
               subject: { type: 'string', description: 'Draft subject' },
-              body: { type: 'string', description: 'Draft body (HTML supported)' },
+              body: { type: 'string', description: 'Draft body in HTML (use <br> for line breaks, <b> for bold. Do NOT use <p>, <ul>, <li> tags)' },
               body_format: { type: 'string', enum: ['html', 'markdown'], description: 'Body format (default: html)' },
             },
             required: ['channel_id', 'author_id', 'body'],
@@ -1270,8 +1270,8 @@ class FrontappMCPServer {
             properties: {
               conversation_id: { type: 'string', description: 'Conversation ID to reply to' },
               author_id: { type: 'string', description: 'Teammate ID creating the draft' },
-              body: { type: 'string', description: 'Draft body (HTML supported)' },
-              channel_id: { type: 'string', description: 'Channel ID to send from (optional - auto-detected from conversation inbox if not provided)' },
+              body: { type: 'string', description: 'Draft reply body in HTML (use <br> for line breaks, <b> for bold. Do NOT use <p>, <ul>, <li> tags)' },
+              channel_id: { type: 'string', description: 'Channel ID to send from. Dan channels: cha_17w5k (dan@danashburn.co.uk personal), cha_jc7dj (dan@aeoengine.ai AEO). If omitted, auto-detected from conversation inbox.' },
               to: { type: 'array', items: { type: 'string' }, description: 'Array of recipient email addresses (optional - defaults to original recipients)' },
               cc: { type: 'array', items: { type: 'string' }, description: 'Array of CC email addresses' },
               bcc: { type: 'array', items: { type: 'string' }, description: 'Array of BCC email addresses' },
@@ -1299,7 +1299,7 @@ class FrontappMCPServer {
             properties: {
               draft_id: { type: 'string', description: 'Draft ID' },
               version: { type: 'string', description: 'Draft version for conflict prevention' },
-              body: { type: 'string', description: 'Updated draft body' },
+              body: { type: 'string', description: 'Updated draft body in HTML (use <br> for line breaks, <b> for bold. Do NOT use <p>, <ul>, <li> tags)' },
               subject: { type: 'string', description: 'Updated subject' },
             },
             required: ['draft_id', 'version'],
